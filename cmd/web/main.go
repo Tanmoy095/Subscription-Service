@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,89 +12,98 @@ import (
 	"github.com/alexedwards/scs/redisstore"
 	"github.com/alexedwards/scs/v2"
 	"github.com/gomodule/redigo/redis"
+	_ "github.com/jackc/pgx/v4/stdlib" // Import the pgx driver
 )
 
-const webport = "90"
+const webPort = "80"
 
 func main() {
-	//connect to database
+	// Connect to database
 	db := initDB()
 
-	//create sessions
+	// Create sessions
 	session := initSession()
 
-	//create loggers.....
-	info_Log := log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
-	error_Log := log.New(os.Stdout, "ERROR\t", log.Ldate|log.Ltime)
+	// Create loggers
+	infoLog := log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
+	errorLog := log.New(os.Stdout, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
 
-	//create channel
-
-	//create waitgroup
+	// Create waitgroup
 	wg := sync.WaitGroup{}
 
-	//set up application server
+	// Set up application server
 	app := Config{
 		Session:  session,
 		DB:       db,
-		InfoLog:  info_Log,
-		ErrorLog: error_Log,
+		InfoLog:  infoLog,
+		ErrorLog: errorLog,
 		Wait:     &wg,
 	}
 
-	//set up mail
-
-	//listen for web connection
-
+	// Listen for web connection
+	app.serve()
 }
-func initDB() *sql.DB {
-	// i will call another function just because
-	// i can try to connect to database repeatedly if necessary
 
-	conn := connectToDB()
-	if conn == nil {
-		log.Panic("cant connect to database")
-
+func (app *Config) serve() {
+	// Start HTTP server
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%s", webPort),
+		Handler: app.routes(),
 	}
 
-	return nil
+	app.InfoLog.Println("Starting web server...")
+
+	err := srv.ListenAndServe()
+	if err != nil {
+		log.Panic(err)
+	}
 }
+
+func initDB() *sql.DB {
+	// Call another function to connect to database with retries
+	conn := connectToDB()
+	if conn == nil {
+		log.Panic("Can't connect to database")
+	}
+	return conn
+}
+
 func connectToDB() *sql.DB {
 	counts := 0
-	//i will try to connect to database fixed number of times
-	//if it fails after that time it dies
-
-	//connection string
+	maxRetries := 10
+	// Connection string
 	dsn := os.Getenv("DSN")
 
 	for {
 		connection, err := openDB(dsn)
 		if err != nil {
-			log.Panicln("Posgtres not ready yet")
-
+			log.Println("Postgres not ready yet:", err)
 		} else {
-			log.Println("connected to database")
+			log.Println("Connected to database")
 			return connection
 		}
-		if counts > 10 {
+
+		if counts >= maxRetries {
+			log.Println("Exceeded maximum number of retries")
 			return nil
 		}
-		log.Print("Backing off for 1 second")
-		time.Sleep(time.Second * 1)
+
+		counts++
+		log.Printf("Backing off for 1 second (%d/%d)\n", counts, maxRetries)
+		time.Sleep(1 * time.Second)
 	}
 }
+
 func openDB(dsn string) (*sql.DB, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
-
 	}
 	err = db.Ping()
 	if err != nil {
 		return nil, err
-
 	}
 	return db, nil
-
 }
 
 // Initialize the session manager with Redis store
@@ -102,11 +112,8 @@ func initSession() *scs.SessionManager {
 	session.Store = redisstore.New(initRedis()) // Use Redis store
 	session.Lifetime = 24 * time.Hour           // Set session lifetime to 24 hours
 	session.Cookie.Persist = true               // Make session cookie persistent
-	//it Configures the session cookie to persist in the user's browser even after the browser is closed.
 	session.Cookie.SameSite = http.SameSiteLaxMode
-	//Sets the SameSite attribute to Lax, which allows the cookie to be sent with same-site requests and some cross-site requests.
 	session.Cookie.Secure = true // Cookie is only sent over HTTPS
-	// Ensures the cookie is only sent over HTTPS
 
 	return session
 }

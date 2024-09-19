@@ -73,6 +73,6 @@ func (app *Config) AppDefaultData(td *TemplateData, r *http.Request) *TemplateDa
 	if app.IsAuthenticated(r) {
 		td.Authenticated = 1 // Set to 1 if user is authenticated
 	}
-
+	td.Now = time.Now()
 	return td // Return the updated TemplateData
 }
