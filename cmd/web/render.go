@@ -10,14 +10,14 @@ import (
 var pathToTemplates = "./cmd/web/templates"
 
 type TemplateData struct {
-	stringMap     map[string]string
+	StringMap     map[string]string
 	IntMap        map[string]int
 	FloatMap      map[string]float64
 	Data          map[string]interface{}
 	Flash         string
 	Warning       string
 	Error         string
-	Authenticated int
+	Authenticated bool
 	Now           time.Time
 }
 
@@ -71,7 +71,7 @@ func (app *Config) AppDefaultData(td *TemplateData, r *http.Request) *TemplateDa
 	td.Error = app.Session.PopString(r.Context(), "error")     // Get and remove "error" message from session
 
 	if app.IsAuthenticated(r) {
-		td.Authenticated = 1 // Set to 1 if user is authenticated
+		td.Authenticated = true // Set to 1 if user is authenticated
 	}
 	td.Now = time.Now()
 	return td // Return the updated TemplateData
