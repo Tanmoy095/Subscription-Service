@@ -6,7 +6,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/alexedwards/scs/redisstore"
@@ -39,6 +41,10 @@ func main() {
 		ErrorLog: errorLog,
 		Wait:     &wg,
 	}
+	//set Up mail........
+
+	//listen for Signals..
+	go app.listenForShutDown()
 
 	// Listen for web connection
 	app.serve()
@@ -127,4 +133,20 @@ func initRedis() *redis.Pool {
 		},
 	}
 	return redisPool
+}
+func (app *Config) listenForShutDown() {
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit //This will pause until we get the request to interrupt or terminate the runniung application
+	app.shutDown()
+	os.Exit(0)
+}
+func (app *Config) shutDown() {
+	//perform any cleanup Tasks
+	app.InfoLog.Println("would run cleanup tasks")
+	//block until waitgroup is empty.....
+	app.Wait.Wait()
+	//Blocks the shutdown until the WaitGroup is empty, meaning that all background tasks or goroutines are completed. If WaitGroup is used in the application, this ensures the app doesn't shut down prematurely while tasks are still running.
+	app.InfoLog.Println("closing channels and shutdown application")
+
 }
